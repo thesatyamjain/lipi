@@ -50,7 +50,7 @@ export async function renderPdfPage(
   } = {}
 ): Promise<RenderedPageResult> {
   const page = await pdfDoc.getPage(pageNumber);
-  const { thumbnailScale = 0.35, highResScale = 2.0, needHighRes = false } = options;
+  const { thumbnailScale = 0.35, highResScale = 3.0, needHighRes = false } = options;
 
   // 1. Render thumbnail for memory-safe grid display
   const thumbViewport = page.getViewport({ scale: thumbnailScale });

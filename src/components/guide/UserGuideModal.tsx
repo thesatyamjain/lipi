@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   IconClose,
   IconBookOpen,
-  IconCocktail,
+  IconDualEngine,
   IconShieldCheck,
   IconDocument,
 } from '../common/Icons';
@@ -14,7 +14,7 @@ interface UserGuideModalProps {
   onOpenSettings?: () => void;
 }
 
-type GuideTab = 'quickstart' | 'languages' | 'cocktail' | 'export' | 'privacy' | 'shortcuts';
+type GuideTab = 'quickstart' | 'languages' | 'dual-engine' | 'export' | 'privacy' | 'shortcuts';
 
 export const UserGuideModal: React.FC<UserGuideModalProps> = ({
   isOpen,
@@ -30,19 +30,19 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4">
       <div className="w-full max-w-3xl bg-[#0f1118] border border-[#23293a] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-[#1f2536] flex items-center justify-between bg-[#131622] shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-[#1f2536] flex items-center justify-between bg-[#131622] shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             <div className="p-1.5 rounded-lg bg-[#c59b27]/10 text-[#c59b27] border border-[#c59b27]/20">
               <IconBookOpen className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-white tracking-tight">Lipi OCR User Manual</h2>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#c59b27]/10 text-[#c59b27] border border-[#c59b27]/20">
+                <span className="text-[9px] sm:text-[10px] font-mono px-1.5 sm:px-2 py-0.5 rounded bg-[#c59b27]/10 text-[#c59b27] border border-[#c59b27]/20">
                   v1.0
                 </span>
               </div>
-              <p className="text-[11px] text-[#8e98a8]">
+              <p className="text-[10px] sm:text-[11px] text-[#8e98a8]">
                 On-Site High-Fidelity Bharatiya Document Processing Guide
               </p>
             </div>
@@ -58,14 +58,14 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
         </div>
 
         {/* Navigation Tabs Bar */}
-        <div className="flex items-center gap-1 px-6 py-2 bg-[#0c0e14] border-b border-[#1d2332] overflow-x-auto shrink-0">
+        <div className="flex items-center gap-1 px-3 sm:px-6 py-1.5 sm:py-2 bg-[#0c0e14] border-b border-[#1d2332] overflow-x-auto no-scrollbar shrink-0">
           {[
-            { id: 'quickstart', label: 'Quick Start', icon: '⚡' },
-            { id: 'languages', label: '22 Bharatiya Languages', icon: '🇮🇳' },
-            { id: 'cocktail', label: 'AI Vision Setup', icon: '✨' },
-            { id: 'export', label: '1:1 Page Export', icon: '📄' },
-            { id: 'privacy', label: 'Privacy & Offline', icon: '🔒' },
-            { id: 'shortcuts', label: 'Shortcuts & Tips', icon: '⌨️' },
+            { id: 'quickstart', label: 'Quick Start' },
+            { id: 'languages', label: '22 Bharatiya Languages' },
+            { id: 'dual-engine', label: 'Dual-Engine AI Setup' },
+            { id: 'export', label: '1:1 Page Export' },
+            { id: 'privacy', label: 'Privacy & Offline' },
+            { id: 'shortcuts', label: 'Shortcuts & Tips' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -76,7 +76,6 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   : 'text-[#8e98a8] hover:text-[#cbd5e1] hover:bg-[#131620]'
               }`}
             >
-              <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           ))}
@@ -204,23 +203,46 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
               <div className="p-3.5 rounded-xl bg-[#141824] border border-[#22293b] space-y-1.5">
                 <div className="text-xs font-semibold text-white">How to select a language:</div>
                 <p className="text-[11px] text-[#94a3b8]">
-                  Open <strong>Settings (⚙️)</strong> in the top header. You can pick <strong>Auto-Detect</strong>, any of the <strong>Bilingual Pairs</strong> (e.g. English + Tamil, English + Hindi), or an individual regional language.
+                  Open <strong>Settings</strong> in the top header. You can pick <strong>Auto-Detect</strong>, any of the <strong>Bilingual Pairs</strong> (e.g. English + Tamil, English + Hindi), or an individual regional language.
                 </p>
+              </div>
+
+              {/* Frontier Reality of Indic OCR */}
+              <div className="p-4 rounded-xl bg-[#121622] border border-[#222a3d] space-y-2.5">
+                <div className="text-xs font-semibold text-[#c59b27] flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-[#c59b27]">BHARAT</span>
+                  <span>The Frontier Reality of Indic OCR &amp; Layout Parsing</span>
+                </div>
+                <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                  Unlike Latin scripts where letters follow a clean linear 1D baseline, Indic scripts are 2-dimensional. The continuous <strong className="text-white">Shirorekha (headline)</strong> ties adjacent characters together, vowels (matras) attach in 4 distinct directions (above, below, left, right), and complex conjuncts (samyuktaksharas like <em>क्ष, त्र, ज्ञ, द्ध</em>) alter glyph shapes entirely.
+                </p>
+                <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                  Even frontier labs like <strong className="text-white">AI4Bharat (IIT Madras)</strong> note that Indic Document Layout Parsing and degraded scan OCR remain nascent. Traditional single-model tools (Tesseract, Google Vision) often fragment words or drop matras on photocopies.
+                </p>
+                <div className="p-2.5 rounded-lg bg-[#0c0e14] border border-[#1b2232] space-y-1">
+                  <div className="text-[11px] font-semibold text-[#4ade80]">How Lipi bridges this frontier gap:</div>
+                  <ul className="list-disc list-inside text-[10px] text-[#8e98a8] space-y-0.5">
+                    <li><strong className="text-[#cbd5e1]">Layer 1 WASM Anchor:</strong> Local layout and character bounds without uploading files.</li>
+                    <li><strong className="text-[#cbd5e1]">Layer 2 Multimodal AI:</strong> Gemini 3.6 Flash deciphers broken shirorekhas, tables, and seals using context.</li>
+                    <li><strong className="text-[#cbd5e1]">Indic Unicode Normalizer:</strong> Automatic NFC composition, orphan matra repair, and Danda (।) restoration.</li>
+                    <li><strong className="text-[#cbd5e1]">Side-by-Side Verification:</strong> Immediate human-in-the-loop audit for legal and government records.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: AI VISION COCKTAIL */}
-          {activeTab === 'cocktail' && (
+          {/* TAB 3: DUAL-ENGINE AI VISION */}
+          {activeTab === 'dual-engine' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="p-4 rounded-xl bg-[#141824] border border-[#232b3d] space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-white flex items-center gap-2">
-                    <IconCocktail className="w-4 h-4 text-[#c59b27]" />
-                    <span>The Dual-Layer "Cocktail" Engine</span>
+                    <IconDualEngine className="w-4 h-4 text-[#c59b27]" />
+                    <span>The Dual-Engine Pipeline</span>
                   </div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#c59b27]/10 text-[#c59b27] border border-[#c59b27]/20">
-                    Gemini 2.5 Flash
+                    Gemini 3.6 Flash
                   </span>
                 </div>
                 <p className="text-[12px] text-[#94a3b8]">
@@ -249,7 +271,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="space-y-0.5">
                       <div className="font-semibold text-white text-xs">Add Your Key in Settings</div>
                       <div className="text-[11px] text-[#8e98a8]">
-                        Click <strong>Settings (⚙️)</strong> in the top right. Toggle AI Refinement to ON, paste your key, and adjust your confidence threshold (default: 75%).
+                        Click <strong>Settings</strong> in the top right. Toggle AI Refinement to ON, paste your key, and adjust your confidence threshold (default: 75%).
                       </div>
                     </div>
                   </div>
@@ -259,7 +281,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="space-y-0.5">
                       <div className="font-semibold text-white text-xs">Refine Automatically or on Demand</div>
                       <div className="text-[11px] text-[#8e98a8]">
-                        Pages with confidence below your threshold will refine automatically. You can also click the <strong>✨ Refine Page with AI</strong> button in the side-by-side viewer at any time.
+                        Pages with confidence below your threshold will refine automatically. You can also click the <strong>Refine Page with AI</strong> button in the side-by-side viewer at any time.
                       </div>
                     </div>
                   </div>
@@ -320,10 +342,30 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div className="p-4 rounded-xl bg-[#121622] border border-[#202636] space-y-1.5">
                   <div className="text-xs font-semibold text-[#cbd5e1] flex items-center gap-2">
                     <IconDocument className="w-4 h-4" />
-                    <span>Plain Text (.txt)</span>
+                    <span>Plain Text (.txt) &amp; Markdown (.md)</span>
                   </div>
                   <p className="text-[11px] text-[#94a3b8] leading-relaxed">
-                    Clean, unformatted text export with standard ASCII boundary delimiters (<code>--- Page N ---</code>) for database ingestion and archival.
+                    Clean, unformatted text export with standard ASCII boundary delimiters (<code>==================== PAGE N ====================</code>) or Markdown headers for database ingestion and archival.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#121622] border border-[#202636] space-y-1.5">
+                  <div className="text-xs font-semibold text-[#c59b27] flex items-center gap-2 font-mono">
+                    <span>&#123; &#125;</span>
+                    <span>Canonical Structured JSON (.json &mdash; PRD &sect;14)</span>
+                  </div>
+                  <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                    Machine-readable intermediate representation structuring each page into categorized blocks (<code>paragraph</code>, <code>table</code>, <code>heading</code>, <code>handwriting</code>) with sequential reading order, script tags, confidence ratings, and review indicators.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#121622] border border-[#202636] space-y-1.5">
+                  <div className="text-xs font-semibold text-[#38bdf8] flex items-center gap-2 font-mono">
+                    <IconShieldCheck className="w-4 h-4 text-[#38bdf8]" />
+                    <span>Processing &amp; Provenance Audit Manifest (PRD NFR-8)</span>
+                  </div>
+                  <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                    Cryptographically tracked execution manifest for institutional, legal, and court compliance. Records model identifiers, worker thread concurrency, timestamps, average accuracy metrics, and page-by-page verification states.
                   </p>
                 </div>
               </div>
@@ -400,7 +442,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
 
                 <div className="p-3 rounded-lg bg-[#121520] border border-[#1e2434] flex items-center justify-between">
                   <span className="text-xs text-[#cbd5e1]">Parallel Hardware Tuning</span>
-                  <span className="text-[11px] text-[#8e98a8]">Adjust worker count in Settings (⚙️)</span>
+                  <span className="text-[11px] text-[#8e98a8]">Adjust worker count in Settings</span>
                 </div>
               </div>
             </div>
@@ -408,15 +450,15 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3.5 border-t border-[#1f2536] bg-[#131622] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-[11px] text-[#64748b]">
-            <IconShieldCheck className="w-3.5 h-3.5 text-[#4ade80]" />
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-[#1f2536] bg-[#131622] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-0 shrink-0">
+          <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-[#64748b]">
+            <IconShieldCheck className="w-3.5 h-3.5 text-[#4ade80] shrink-0" />
             <span>Permanent reference available at USER_GUIDE.md</span>
           </div>
 
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-[#1c2232] text-white text-xs font-semibold hover:bg-[#252d42] transition-colors cursor-pointer border border-[#2b364e]"
+            className="px-4 py-1.5 rounded-lg bg-[#1c2232] text-white text-xs font-semibold hover:bg-[#252d42] transition-colors cursor-pointer border border-[#2b364e] text-center"
           >
             Close Guide
           </button>

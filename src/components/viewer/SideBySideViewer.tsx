@@ -5,7 +5,7 @@ import {
   IconChevronRight,
   IconZoomIn,
   IconZoomOut,
-  IconCocktail,
+  IconDualEngine,
   IconCopy,
   IconCheck,
   IconAlertTriangle,
@@ -13,7 +13,6 @@ import {
   IconMaximize,
   IconClose,
   IconHand,
-  IconBookOpen,
 } from '../common/Icons';
 
 interface SideBySideViewerProps {
@@ -24,7 +23,6 @@ interface SideBySideViewerProps {
   onRefineWithAi: (index: number) => Promise<void>;
   isRefining: boolean;
   config: JobConfig;
-  onOpenGuide?: () => void;
 }
 
 export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
@@ -35,7 +33,6 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   onRefineWithAi,
   isRefining,
   config,
-  onOpenGuide,
 }) => {
   const [zoom, setZoom] = useState<number>(1.0);
   const [fitMode, setFitMode] = useState<'page' | 'width' | 'custom'>('page');
@@ -45,6 +42,9 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   const [copied, setCopied] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [showBoxes, setShowBoxes] = useState<boolean>(true);
+  const [naturalDimensions, setNaturalDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [mobileTab, setMobileTab] = useState<'text' | 'scan' | 'split'>('text');
 
   // Hand Move (Pan & Drag) State
   const [isHandToolActive, setIsHandToolActive] = useState<boolean>(true);
@@ -52,6 +52,11 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Mobile pinch-to-zoom touch gesture refs
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const initialPinchDistRef = useRef<number | null>(null);
+  const initialPinchZoomRef = useRef<number>(1.0);
 
   // Fullscreen Pan State
   const [fullscreenPan, setFullscreenPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -68,11 +73,19 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
     setFullscreenPan({ x: 0, y: 0 });
   }, [currentPageIndex, currentPage?.highResUrl]);
 
-  // Handle ESC to exit fullscreen
+  // Handle ESC to exit fullscreen and Spacebar to activate grab/pan (PRD §7.3)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false);
+      }
+      // Hold Spacebar to activate hand grab-pan on-the-fly when not typing in an editor
+      if (
+        e.code === 'Space' &&
+        !['TEXTAREA', 'INPUT'].includes((e.target as HTMLElement)?.tagName)
+      ) {
+        e.preventDefault();
+        setIsHandToolActive(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -127,8 +140,20 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
     setFullscreenPan({ x: 0, y: 0 });
   };
 
-  // Main Viewport Pointer Handlers for Hand Drag
+  // Main Viewport Pointer Handlers for Hand Drag & Multi-Touch Pinch Zoom
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Multi-touch pinch-to-zoom for mobile phones
+    if (activePointersRef.current.size === 2) {
+      const pts = Array.from(activePointersRef.current.values());
+      initialPinchDistRef.current = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      initialPinchZoomRef.current = zoom;
+      setFitMode('custom');
+      setIsDragging(false);
+      return;
+    }
+
     if (!isHandToolActive || e.button !== 0) return;
     // Do not initiate drag if user clicked an interactive control (e.g. Recenter button)
     if ((e.target as HTMLElement).closest('button')) return;
@@ -142,6 +167,20 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // Handle 2-finger pinch gesture on mobile
+    if (activePointersRef.current.size === 2 && initialPinchDistRef.current && initialPinchDistRef.current > 0) {
+      const pts = Array.from(activePointersRef.current.values());
+      const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const scaleRatio = currentDist / initialPinchDistRef.current;
+      const newZoom = Math.min(3.5, Math.max(0.3, Number((initialPinchZoomRef.current * scaleRatio).toFixed(2))));
+      setZoom(newZoom);
+      return;
+    }
+
     if (!isDragging) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
@@ -152,6 +191,10 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    activePointersRef.current.delete(e.pointerId);
+    if (activePointersRef.current.size < 2) {
+      initialPinchDistRef.current = null;
+    }
     if (isDragging) {
       setIsDragging(false);
       try {
@@ -207,53 +250,89 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
   const imageUrl = currentPage.highResUrl || currentPage.thumbnailUrl;
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-2 sm:py-4 space-y-2.5 sm:space-y-4">
       {/* Top Page Navigation Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0d0f16] border border-[#1e2333] p-3 rounded-xl">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onSelectPage(Math.max(0, currentPageIndex - 1))}
-            disabled={currentPageIndex === 0}
-            className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-white hover:border-[#38425d] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
-            title="Previous Page (Left Arrow)"
-          >
-            <IconChevronLeft className="w-4 h-4" />
-          </button>
-
-          {/* Page Dropdown selector */}
-          <div className="flex items-center gap-1.5 font-mono text-xs">
-            <span className="text-[#8e98a8]">Page</span>
-            <select
-              value={currentPageIndex}
-              onChange={(e) => onSelectPage(parseInt(e.target.value, 10))}
-              className="bg-[#141724] border border-[#272e42] rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-[#c59b27] cursor-pointer"
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 bg-[#0d0f16] border border-[#1e2333] p-2.5 sm:p-3 rounded-xl">
+        <div className="flex items-center justify-between sm:justify-start gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => onSelectPage(Math.max(0, currentPageIndex - 1))}
+              disabled={currentPageIndex === 0}
+              className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-white hover:border-[#38425d] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+              title="Previous Page (Left Arrow)"
             >
-              {pages.map((p, idx) => (
-                <option key={idx} value={idx}>
-                  {p.pageNumber} of {pages.length}
-                </option>
-              ))}
-            </select>
+              <IconChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Page Dropdown selector */}
+            <div className="flex items-center gap-1.5 font-mono text-xs">
+              <span className="text-[#8e98a8] hidden sm:inline">Page</span>
+              <select
+                value={currentPageIndex}
+                onChange={(e) => onSelectPage(parseInt(e.target.value, 10))}
+                className="bg-[#141724] border border-[#272e42] rounded-lg px-2 sm:px-2.5 py-1 text-xs text-white focus:outline-none focus:border-[#c59b27] cursor-pointer"
+              >
+                {pages.map((p, idx) => (
+                  <option key={idx} value={idx}>
+                    {p.pageNumber} of {pages.length}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => onSelectPage(Math.min(pages.length - 1, currentPageIndex + 1))}
+              disabled={currentPageIndex === pages.length - 1}
+              className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-white hover:border-[#38425d] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+              title="Next Page (Right Arrow)"
+            >
+              <IconChevronRight className="w-4 h-4" />
+            </button>
           </div>
 
-          <button
-            onClick={() => onSelectPage(Math.min(pages.length - 1, currentPageIndex + 1))}
-            disabled={currentPageIndex === pages.length - 1}
-            className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-white hover:border-[#38425d] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
-            title="Next Page (Right Arrow)"
-          >
-            <IconChevronRight className="w-4 h-4" />
-          </button>
+          {/* Actions for current page (Mobile: placed right of page selector) */}
+          <div className="flex items-center gap-1.5 lg:hidden">
+            {currentPage.rawOcrText && currentPage.isAiRefined && (
+              <button
+                onClick={() => setShowDiff(!showDiff)}
+                className={`px-2 py-1 rounded-lg border text-[11px] font-mono transition-colors cursor-pointer ${
+                  showDiff
+                    ? 'bg-[#c59b27]/20 border-[#c59b27] text-white'
+                    : 'bg-[#141724] border-[#252c3f] text-[#94a3b8] hover:text-white'
+                }`}
+              >
+                {showDiff ? 'Hide Diff' : 'Diff'}
+              </button>
+            )}
+
+            <button
+              onClick={() => onRefineWithAi(currentPageIndex)}
+              disabled={isRefining || !config.geminiApiKey}
+              className="px-2.5 py-1 rounded-lg bg-[#c59b27]/10 border border-[#c59b27]/30 text-[#f3cb59] text-[11px] font-semibold hover:bg-[#c59b27]/20 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              title="Refine page with AI"
+            >
+              <IconDualEngine className="w-3 h-3" />
+              <span>{isRefining ? 'AI...' : 'AI'}</span>
+            </button>
+
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-white hover:border-[#38425d] transition-colors cursor-pointer"
+              title="Copy Page Text"
+            >
+              {copied ? <IconCheck className="w-3.5 h-3.5 text-[#4ade80]" /> : <IconCopy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
         {/* Confidence & Script Badges */}
-        <div className="flex flex-wrap items-center gap-2.5 font-mono text-xs">
-          <span className="px-2.5 py-1 rounded-md bg-[#141824] border border-[#242b3d] text-[#94a3b8]">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 font-mono text-[11px] sm:text-xs">
+          <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-[#141824] border border-[#242b3d] text-[#94a3b8]">
             Script: <strong className="text-white">{currentPage.script || 'Latin'}</strong>
           </span>
 
           <span
-            className={`px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${
+            className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md border flex items-center gap-1 sm:gap-1.5 ${
               currentPage.confidence >= 80
                 ? 'bg-[#4ade80]/10 border-[#4ade80]/30 text-[#4ade80]'
                 : currentPage.confidence >= 65
@@ -266,15 +345,15 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
           </span>
 
           {currentPage.isAiRefined && (
-            <span className="px-2.5 py-1 rounded-md bg-[#c59b27]/15 border border-[#c59b27]/40 text-[#f6d26d] flex items-center gap-1.5 font-semibold">
-              <IconCocktail className="w-3.5 h-3.5" />
+            <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-[#c59b27]/15 border border-[#c59b27]/40 text-[#f6d26d] flex items-center gap-1 sm:gap-1.5 font-semibold">
+              <IconDualEngine className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
               <span>AI Refined</span>
             </span>
           )}
         </div>
 
-        {/* Actions for current page */}
-        <div className="flex items-center gap-2">
+        {/* Actions for current page (Desktop) */}
+        <div className="hidden lg:flex items-center gap-2">
           {currentPage.rawOcrText && currentPage.isAiRefined && (
             <button
               onClick={() => setShowDiff(!showDiff)}
@@ -298,7 +377,7 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                 : 'Configure Gemini API key in Settings to activate AI refinement'
             }
           >
-            <IconCocktail className="w-3.5 h-3.5" />
+            <IconDualEngine className="w-3.5 h-3.5" />
             <span>{isRefining ? 'Refining with AI...' : 'Refine with AI'}</span>
           </button>
 
@@ -309,40 +388,68 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
           >
             {copied ? <IconCheck className="w-4 h-4 text-[#4ade80]" /> : <IconCopy className="w-4 h-4" />}
           </button>
-
-          {onOpenGuide && (
-            <button
-              onClick={onOpenGuide}
-              className="p-1.5 rounded-lg border border-[#242a3c] bg-[#141722] text-[#94a3b8] hover:text-[#c59b27] hover:border-[#c59b27]/40 transition-colors cursor-pointer"
-              title="Open User Guide & Shortcuts"
-            >
-              <IconBookOpen className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
 
+      {/* Mobile Segmented Workspace Mode Switcher (Visible on < lg screens) */}
+      <div className="lg:hidden flex items-center rounded-lg bg-[#11141e] border border-[#202739] p-0.5 text-xs font-mono w-full shadow-sm">
+        <button
+          type="button"
+          onClick={() => setMobileTab('text')}
+          className={`flex-1 py-1.5 rounded-md transition-all text-center cursor-pointer ${
+            mobileTab === 'text'
+              ? 'bg-[#c59b27] text-black font-bold shadow-sm'
+              : 'text-[#8e98a8] hover:text-white'
+          }`}
+        >
+          Extracted Text
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('scan')}
+          className={`flex-1 py-1.5 rounded-md transition-all text-center cursor-pointer ${
+            mobileTab === 'scan'
+              ? 'bg-[#c59b27] text-black font-bold shadow-sm'
+              : 'text-[#8e98a8] hover:text-white'
+          }`}
+        >
+          Scan Image
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('split')}
+          className={`flex-1 py-1.5 rounded-md transition-all text-center cursor-pointer ${
+            mobileTab === 'split'
+              ? 'bg-[#c59b27] text-black font-bold shadow-sm'
+              : 'text-[#8e98a8] hover:text-white'
+          }`}
+        >
+          Split
+        </button>
+      </div>
+
       {/* Side-by-Side Split Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[680px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 min-h-[440px] h-[calc(100dvh-220px)] lg:h-[700px]">
         {/* Left Pane: Original Page Scan */}
-        <div className="flex flex-col bg-[#0b0d14] border border-[#1e2333] rounded-xl overflow-hidden shadow-2xl">
+        <div
+          className={`flex flex-col bg-[#0b0d14] border border-[#1e2333] rounded-xl overflow-hidden shadow-2xl ${
+            mobileTab === 'text' ? 'hidden lg:flex' : 'flex'
+          }`}
+        >
           {/* Pane Header: Enhanced Preview Toolbar with Hand Move */}
-          <div className="px-4 py-2.5 border-b border-[#1c2130] bg-[#11141e] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[#1c2130] bg-[#11141e] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs font-semibold uppercase tracking-wider text-[#94a3b8] font-mono">
                 Scan Preview
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#181d2a] text-[#718096] border border-[#252c3e]">
-                P. {currentPage.pageNumber}
               </span>
             </div>
 
             {/* View Mode, Hand Tool, Zoom, Rotate, and Fullscreen Controls */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
               {/* Hand Move Tool Toggle */}
               <button
                 onClick={() => setIsHandToolActive(!isHandToolActive)}
-                className={`px-2 py-1 rounded text-[11px] font-mono transition-colors flex items-center gap-1 cursor-pointer border ${
+                className={`px-2 py-1 rounded text-[11px] font-mono transition-colors flex items-center gap-1 cursor-pointer border shrink-0 ${
                   isHandToolActive
                     ? 'bg-[#c59b27]/20 border-[#c59b27] text-white shadow-sm font-semibold'
                     : 'border-[#232a3c] text-[#8e98a8] hover:text-white'
@@ -451,6 +558,21 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                 Contrast
               </button>
 
+              {/* Bounding Box Overlay Toggle (PRD §7.3) */}
+              {currentPage.words && currentPage.words.length > 0 && (
+                <button
+                  onClick={() => setShowBoxes(!showBoxes)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors cursor-pointer border ${
+                    showBoxes
+                      ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#6ee7b7]'
+                      : 'border-[#232a3b] text-[#718096] hover:text-[#cbd5e1]'
+                  }`}
+                  title="Toggle word bounding boxes (Green: >=90%, Amber: 75-89%, Red: <75%)"
+                >
+                  Boxes {showBoxes ? 'ON' : 'OFF'}
+                </button>
+              )}
+
               {/* Fullscreen Expand */}
               <button
                 onClick={() => setIsFullscreen(true)}
@@ -489,29 +611,78 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                   transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) rotate(${rotation}deg)`,
                 }}
               >
-                <img
-                  src={imageUrl}
-                  alt={`Page ${currentPage.pageNumber}`}
-                  draggable={false}
-                  onError={() => setImageError(true)}
-                  style={{
-                    filter: enhanceContrast ? 'contrast(1.3) brightness(1.02)' : 'none',
-                    pointerEvents: 'none',
-                    ...(fitMode === 'custom'
-                      ? {
-                          width: `${Math.round(zoom * 100)}%`,
-                          maxWidth: 'none',
-                        }
-                      : {}),
-                  }}
-                  className={`rounded shadow-2xl border border-[#242a3c] transition-all duration-150 select-none ${
-                    fitMode === 'page'
-                      ? 'max-h-full max-w-full object-contain'
-                      : fitMode === 'width'
-                      ? 'w-full h-auto object-contain'
-                      : 'h-auto'
-                  }`}
-                />
+                <div className="relative inline-block max-h-full max-w-full">
+                  <img
+                    src={imageUrl}
+                    alt={`Page ${currentPage.pageNumber}`}
+                    draggable={false}
+                    onError={() => setImageError(true)}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setNaturalDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                    }}
+                    style={{
+                      filter: enhanceContrast ? 'contrast(1.3) brightness(1.02)' : 'none',
+                      pointerEvents: 'none',
+                      ...(fitMode === 'custom'
+                        ? {
+                            width: `${Math.round(zoom * 100)}%`,
+                            maxWidth: 'none',
+                          }
+                        : {}),
+                    }}
+                    className={`rounded shadow-2xl border border-[#242a3c] transition-all duration-150 select-none block ${
+                      fitMode === 'page'
+                        ? 'max-h-full max-w-full object-contain'
+                        : fitMode === 'width'
+                        ? 'w-full h-auto object-contain'
+                        : 'h-auto'
+                    }`}
+                  />
+
+                  {/* Word-Level Bounding Box Overlays (PRD §7.3) */}
+                  {showBoxes &&
+                    naturalDimensions.width > 0 &&
+                    naturalDimensions.height > 0 &&
+                    currentPage.words &&
+                    currentPage.words.map((w, idx) => {
+                      if (!w.bbox) return null;
+                      const left = (w.bbox.x0 / naturalDimensions.width) * 100;
+                      const top = (w.bbox.y0 / naturalDimensions.height) * 100;
+                      const width = ((w.bbox.x1 - w.bbox.x0) / naturalDimensions.width) * 100;
+                      const height = ((w.bbox.y1 - w.bbox.y0) / naturalDimensions.height) * 100;
+                      const isHigh = w.confidence >= 90;
+                      const isMed = w.confidence >= 75;
+                      const borderColor = isHigh
+                        ? 'rgba(74, 222, 128, 0.75)'
+                        : isMed
+                        ? 'rgba(250, 204, 21, 0.75)'
+                        : 'rgba(248, 113, 113, 0.85)';
+                      const bgColor = isHigh
+                        ? 'rgba(74, 222, 128, 0.12)'
+                        : isMed
+                        ? 'rgba(250, 204, 21, 0.15)'
+                        : 'rgba(248, 113, 113, 0.22)';
+
+                      return (
+                        <div
+                          key={idx}
+                          title={`${w.text} (${Math.round(w.confidence)}%)`}
+                          style={{
+                            position: 'absolute',
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            width: `${width}%`,
+                            height: `${height}%`,
+                            border: `1px solid ${borderColor}`,
+                            backgroundColor: bgColor,
+                            pointerEvents: 'auto',
+                          }}
+                          className="rounded-[1px] hover:ring-1 hover:ring-white transition-all cursor-pointer"
+                        />
+                      );
+                    })}
+                </div>
               </div>
             ) : imageError ? (
               <div className="text-center p-6 space-y-2">
@@ -527,70 +698,166 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                 <span>Loading page scan...</span>
               </div>
             )}
-
-            {/* Hand Move active floating recenter pill */}
-            {(Math.abs(panOffset.x) > 3 || Math.abs(panOffset.y) > 3) && (
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                onClick={handleRecenter}
-                className="absolute bottom-3 right-3 z-20 px-3 py-1.5 rounded-lg bg-[#0e111a]/95 border border-[#c59b27] text-xs font-mono text-white hover:bg-[#c59b27] hover:text-black transition-all cursor-pointer shadow-2xl flex items-center gap-1.5 backdrop-blur-md font-semibold"
-                title="Recenter page scan position"
-              >
-                <span>&bull; Recenter Position</span>
-              </button>
-            )}
           </div>
         </div>
 
         {/* Right Pane: Extracted Text Editor */}
-        <div className="flex flex-col bg-[#0b0d14] border border-[#1e2333] rounded-xl overflow-hidden shadow-2xl">
+        <div
+          className={`flex flex-col bg-[#0b0d14] border border-[#1e2333] rounded-xl overflow-hidden shadow-2xl ${
+            mobileTab === 'scan' ? 'hidden lg:flex' : 'flex'
+          }`}
+        >
           {/* Pane Header */}
-          <div className="px-4 py-2.5 border-b border-[#1c2130] bg-[#11141e] flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[#1c2130] bg-[#11141e] flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
               <span className="text-xs font-semibold uppercase tracking-wider text-[#94a3b8] font-mono">
                 Extracted Transcription
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#181d2a] text-[#8e98a8]">
-                Editable
+                {showDiff ? 'Traceable Diff' : 'Editable'}
               </span>
+
+              {/* Result Source Transparency Badges (PRD §7.3) */}
+              {currentPage.sourceType === 'gemini_vision' || (currentPage.isAiRefined && !currentPage.sourceType) ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#c59b27]/15 text-[#f6d26d] border border-[#c59b27]/30 flex items-center gap-1">
+                  <span className="font-bold text-[9px] text-[#c59b27]">AI</span>
+                  <span>Gemini Vision</span>
+                </span>
+              ) : currentPage.sourceType === 'ai_corrected' ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#3b82f6]/15 text-[#93c5fd] border border-[#3b82f6]/30 flex items-center gap-1">
+                  <span className="font-bold text-[9px] text-[#60a5fa]">FIX</span>
+                  <span>AI-Corrected</span>
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1e2433] text-[#94a3b8] border border-[#2d364c] flex items-center gap-1">
+                  <span className="font-bold text-[9px] text-[#64748b]">BASE</span>
+                  <span>Normal (Raw OCR)</span>
+                </span>
+              )}
+
+              {/* Calibrated Confidence Score & Review Indicator */}
+              {currentPage.calibratedConfidence !== undefined && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#131622] border border-[#23293a] text-[#8e98a8]">
+                  Calibrated: <strong className="text-white">{currentPage.calibratedConfidence}%</strong>
+                </span>
+              )}
+
+              {currentPage.needsReview && (
+                <span
+                  title={currentPage.reviewFlags?.join('; ') || 'Orthographic inspection recommended'}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#ef4444]/15 border border-[#ef4444]/30 text-[#fca5a5] flex items-center gap-1 cursor-help"
+                >
+                  <span className="font-bold text-[9px] text-[#f87171]">FLAG</span>
+                  <span>Review Needed</span>
+                </span>
+              )}
+
+              {config.documentMode === 'handwritten' && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#c59b27]/15 text-[#f6d26d] border border-[#c59b27]/30">
+                  Handwriting Mode
+                </span>
+              )}
             </div>
-            <div className="text-[11px] font-mono text-[#78859b]">
-              {wordCount} words &bull; {charCount} characters
+            <div className="flex items-center gap-2.5 text-[11px] font-mono">
+              {currentPage.rawOcrText && currentPage.isAiRefined && (
+                <button
+                  onClick={() => setShowDiff(!showDiff)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-all cursor-pointer ${
+                    showDiff
+                      ? 'bg-[#c59b27]/20 border-[#c59b27] text-white font-semibold'
+                      : 'bg-[#141724] border-[#252c3f] text-[#94a3b8] hover:text-white'
+                  }`}
+                >
+                  {showDiff ? 'Switch to Editor' : 'Inspect AI Diff'}
+                </button>
+              )}
+              <span className="text-[#78859b]">
+                {wordCount} words &bull; {charCount} chars
+              </span>
             </div>
           </div>
 
           {/* Pane Body: Editable Textarea or Diff View */}
-          <div className="flex-1 p-4 flex flex-col overflow-hidden bg-[#0a0c12]">
+          <div className="flex-1 p-3 sm:p-4 flex flex-col overflow-hidden bg-[#0a0c12]">
             {showDiff && currentPage.rawOcrText ? (
-              <div className="flex-1 flex flex-col space-y-2 overflow-y-auto">
-                <div className="text-xs text-[#8e98a8] font-mono mb-1">
-                  Comparing Raw Base OCR (left) vs AI Refined Transcription (right):
+              <div className="flex-1 flex flex-col space-y-3 overflow-y-auto">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2.5 rounded-lg bg-[#11141e] border border-[#1f2637] gap-2">
+                  <div className="text-xs text-[#94a3b8]">
+                    <strong className="text-white font-mono">Traceable AI Diff:</strong> Raw local WASM vs Gemini Vision.
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      onClick={() => {
+                        if (currentPage.rawOcrText) {
+                          onUpdatePageText(currentPageIndex, currentPage.rawOcrText);
+                          setShowDiff(false);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded bg-[#ef4444]/10 border border-[#ef4444]/30 text-[#f87171] hover:bg-[#ef4444]/20 text-[11px] font-mono font-semibold transition-all cursor-pointer flex items-center gap-1"
+                      title="Discard AI corrections and restore original raw WebAssembly OCR output"
+                    >
+                      <span>Revert to WASM</span>
+                    </button>
+                    <button
+                      onClick={() => setShowDiff(false)}
+                      className="px-2.5 py-1 rounded bg-[#c59b27]/15 border border-[#c59b27]/40 text-[#f6d26d] hover:bg-[#c59b27]/25 text-[11px] font-mono font-semibold transition-all cursor-pointer"
+                    >
+                      Keep AI &amp; Edit
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 flex-1">
-                  <div className="p-3 bg-[#131620] border border-[#242b3d] rounded-lg text-xs font-mono text-[#94a3b8] overflow-auto whitespace-pre-wrap">
-                    <div className="text-[10px] text-[#f87171] uppercase font-bold mb-2">
-                      Base WASM OCR
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 flex-1 min-h-[280px]">
+                  <div className="p-3 bg-[#131620] border border-[#242b3d] rounded-lg text-xs font-mono text-[#94a3b8] overflow-auto whitespace-pre-wrap leading-relaxed">
+                    <div className="text-[10px] text-[#f87171] uppercase font-bold mb-2 flex items-center justify-between border-b border-[#242b3d] pb-1.5">
+                      <span>Base WASM OCR (Unedited)</span>
+                      <span className="text-[9px] font-normal text-[#64748b]">Local Tesseract</span>
                     </div>
                     {currentPage.rawOcrText}
                   </div>
-                  <div className="p-3 bg-[#131620] border border-[#c59b27]/30 rounded-lg text-xs font-mono text-[#f1f5f9] overflow-auto whitespace-pre-wrap">
-                    <div className="text-[10px] text-[#4ade80] uppercase font-bold mb-2">
-                      Gemini Vision Refined
+                  <div className="p-3 bg-[#0f1917] border border-[#1d3d2f] rounded-lg text-xs font-mono text-[#e2e8f0] overflow-auto whitespace-pre-wrap leading-relaxed">
+                    <div className="text-[10px] text-[#4ade80] uppercase font-bold mb-2 flex items-center justify-between border-b border-[#242b3d] pb-1.5">
+                      <span>AI Multimodal Vision Refined</span>
+                      <span className="text-[9px] font-normal text-[#c59b27] font-mono">{config.modelName || 'Gemini 3.6 Flash'}</span>
                     </div>
                     {currentPage.text}
                   </div>
                 </div>
+
+                {/* Structured Diffs List (PRD Stage 6 Contextual Correction Matrix) */}
+                {currentPage.diffs && currentPage.diffs.length > 0 && (
+                  <div className="p-3 bg-[#0d1017] border border-[#202738] rounded-lg space-y-2">
+                    <div className="text-xs font-semibold text-white flex items-center justify-between">
+                      <span className="font-mono">Proposed Corrections ({currentPage.diffs.length})</span>
+                      <span className="text-[10px] text-[#8e98a8]">Non-destructive</span>
+                    </div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {currentPage.diffs.map((d, dIdx) => (
+                        <div
+                          key={dIdx}
+                          className="flex items-center justify-between p-1.5 rounded bg-[#131622] border border-[#1f2638] text-[11px] font-mono"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="line-through text-[#f87171]">{d.original}</span>
+                            <span className="text-[#64748b]">&rarr;</span>
+                            <span className="text-[#4ade80] font-semibold">{d.suggested}</span>
+                            <span className="text-[10px] text-[#8e98a8] hidden sm:inline">({d.reason})</span>
+                          </div>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#c59b27]/15 text-[#f6d26d]">
+                            +{Math.round((d.confidenceGain || 0.1) * 100)}% conf
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <textarea
                 value={currentPage.text}
                 onChange={(e) => onUpdatePageText(currentPageIndex, e.target.value)}
                 placeholder="Extracting text for this page..."
-                className="w-full flex-1 bg-transparent text-sm text-[#e2e8f0] leading-relaxed font-sans resize-none focus:outline-none placeholder-[#475569] selection:bg-[#c59b27]/30"
+                className="w-full flex-1 bg-transparent text-base sm:text-sm text-[#e2e8f0] leading-relaxed font-sans resize-none focus:outline-none placeholder-[#475569] selection:bg-[#c59b27]/30"
                 spellCheck={false}
               />
             )}
@@ -611,7 +878,7 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                 {Math.round(zoom * 100)}% {rotation !== 0 && `(${rotation}°)`}
               </span>
               <span className="text-[11px] font-mono text-[#c59b27] bg-[#c59b27]/10 px-2 py-0.5 rounded border border-[#c59b27]/20">
-                ✋ Drag with mouse to move
+                Pan: Click and drag
               </span>
             </div>
 
@@ -702,22 +969,6 @@ export const SideBySideViewer: React.FC<SideBySideViewerProps> = ({
                   className={`rounded shadow-2xl border border-[#2b354c] max-h-full max-w-full object-contain select-none`}
                 />
               </div>
-            )}
-
-            {/* Fullscreen floating recenter pill */}
-            {(Math.abs(fullscreenPan.x) > 3 || Math.abs(fullscreenPan.y) > 3) && (
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                onClick={handleFsRecenter}
-                className="absolute bottom-6 right-6 z-20 px-3.5 py-2 rounded-lg bg-[#0e111a]/95 border border-[#c59b27] text-xs font-mono text-white hover:bg-[#c59b27] hover:text-black transition-all cursor-pointer shadow-2xl flex items-center gap-1.5 backdrop-blur-md font-semibold"
-                title="Recenter fullscreen scan position"
-              >
-                <span>&bull; Recenter Position</span>
-              </button>
             )}
           </div>
         </div>

@@ -320,7 +320,7 @@ export const BHARATIYA_LANGUAGES: BharatiyaLanguage[] = [
  * Verified Tesseract traineddata language codes available on CDN
  */
 export const VALID_TESSERACT_LANG_CODES = new Set([
-  'asm', 'ben', 'bod', 'guj', 'hin', 'kan', 'mal', 'mar',
+  'asm', 'ben', 'guj', 'hin', 'kan', 'mal', 'mar',
   'nep', 'ori', 'pan', 'san', 'snd', 'tam', 'tel', 'urd', 'eng',
 ]);
 

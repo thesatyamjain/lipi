@@ -13,6 +13,8 @@ import { DocumentJob, JobConfig, PageData } from './types';
 import { loadPdfDocument, renderPdfPage, processImageFile, loadTiffDocument } from './core/pdf/pageExtractor';
 import { OcrWorkerPool } from './core/ocr/workerPool';
 import { refinePageWithAi } from './core/ocr/aiRefiner';
+import { calculateCalibratedConfidence, generateContextualDiffs } from './core/ocr/orthographyAgent';
+import { generateStrictFidelityDocx } from './core/export/docxExporter';
 import { SAMPLE_PAGES, createSamplePageBlob } from './core/utils/sampleData';
 
 const getOptimalWorkerCount = (): number => {
@@ -25,8 +27,10 @@ const getOptimalWorkerCount = (): number => {
 
 const DEFAULT_CONFIG: JobConfig = {
   language: 'eng+hin',
+  documentMode: 'printed',
   enableAiRefinement: true,
   geminiApiKey: '',
+  modelName: 'gemini-3.6-flash',
   aiConfidenceThreshold: 75,
   workerCount: getOptimalWorkerCount(),
   autoFitDocx: true,
@@ -37,7 +41,14 @@ export const App: React.FC = () => {
   const [config, setConfig] = useState<JobConfig>(() => {
     try {
       const saved = localStorage.getItem('lipi_ocr_config') || localStorage.getItem('kalon_ocr_config');
-      if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Automatic migration of legacy models (PRD §5.2)
+        if (parsed.modelName === 'gemini-2.5-flash') {
+          parsed.modelName = 'gemini-3.6-flash';
+        }
+        return { ...DEFAULT_CONFIG, ...parsed };
+      }
     } catch {}
     return DEFAULT_CONFIG;
   });
@@ -53,6 +64,9 @@ export const App: React.FC = () => {
 
   const workerPoolRef = useRef<OcrWorkerPool | null>(null);
   const isCanceledRef = useRef<boolean>(false);
+  const isPausedRef = useRef<boolean>(false);
+  const queueRef = useRef<number[]>([]);
+  const processNextPageRef = useRef<(() => Promise<void>) | null>(null);
 
   // Persist configuration
   const handleSaveConfig = (newConfig: JobConfig) => {
@@ -131,14 +145,15 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Queue-based parallel processing
-    const queue = Array.from({ length: totalPages }, (_, i) => i + 1);
+    // Queue-based parallel processing (PRD §7.2 Resumable Queue)
+    queueRef.current = Array.from({ length: totalPages }, (_, i) => i + 1);
+    isPausedRef.current = false;
     let activeRunning = 0;
 
     const processNextPage = async (): Promise<void> => {
-      if (queue.length === 0 || isCanceledRef.current) return;
+      if (queueRef.current.length === 0 || isCanceledRef.current || isPausedRef.current) return;
 
-      const pageNumber = queue.shift()!;
+      const pageNumber = queueRef.current.shift()!;
       const pageIndex = pageNumber - 1;
 
       // Update status to rendering
@@ -175,18 +190,18 @@ export const App: React.FC = () => {
         // Layer 1: Run local WASM OCR with adaptive preprocessing
         const ocrResult = await pool.recognize(highResBlob, {
           preprocess: config.preprocessScan,
+          documentMode: config.documentMode,
         });
 
         let finalText = ocrResult.text;
         let isAiRefined = false;
 
-        // Layer 2: Cocktail AI Refinement check
-        if (
-          config.enableAiRefinement &&
-          config.geminiApiKey &&
-          ocrResult.confidence < config.aiConfidenceThreshold &&
-          !isCanceledRef.current
-        ) {
+        // Stages 5 & 6: Orthography Cross-Validation & Contextual Correction Matrix
+        const diffs = generateContextualDiffs(ocrResult.text, ocrResult.script);
+        const rawCalibrated = calculateCalibratedConfidence(ocrResult.confidence, ocrResult.text, ocrResult.script);
+
+        // Layer 2: AI Refinement — always runs when API key is provided
+        if (config.enableAiRefinement && config.geminiApiKey && !isCanceledRef.current && !isPausedRef.current) {
           setJob((prev) => {
             if (!prev) return null;
             const updated = [...prev.pages];
@@ -204,6 +219,8 @@ export const App: React.FC = () => {
             rawOcrText: ocrResult.text,
             detectedScript: ocrResult.script,
             pageNumber,
+            documentMode: config.documentMode,
+            modelName: config.modelName || 'gemini-3.6-flash',
           });
 
           if (aiResult.success) {
@@ -211,6 +228,17 @@ export const App: React.FC = () => {
             isAiRefined = true;
           }
         }
+
+        // Stage 7: QA & Calibrated Confidence Scoring
+        const finalCalibrated = isAiRefined
+          ? calculateCalibratedConfidence(95, finalText, ocrResult.script)
+          : rawCalibrated;
+
+        const sourceType: 'gemini_vision' | 'ai_corrected' | 'normal' = isAiRefined
+          ? 'gemini_vision'
+          : diffs.length > 0
+          ? 'ai_corrected'
+          : 'normal';
 
         // Commit page result to state
         setJob((prev) => {
@@ -221,6 +249,11 @@ export const App: React.FC = () => {
             text: finalText,
             rawOcrText: ocrResult.text,
             confidence: isAiRefined ? Math.max(92, ocrResult.confidence) : ocrResult.confidence,
+            calibratedConfidence: finalCalibrated.calibratedConfidence,
+            needsReview: finalCalibrated.needsReview,
+            reviewFlags: finalCalibrated.reviewFlags,
+            diffs,
+            sourceType,
             script: ocrResult.script,
             status: 'done',
             isAiRefined,
@@ -245,11 +278,13 @@ export const App: React.FC = () => {
       } finally {
         activeRunning--;
         setActiveWorkers(activeRunning);
-        if (!isCanceledRef.current && queue.length > 0) {
+        if (!isCanceledRef.current && !isPausedRef.current && queueRef.current.length > 0) {
           await processNextPage();
         }
       }
     };
+
+    processNextPageRef.current = processNextPage;
 
     // Spawn concurrent processing workers according to config
     const workerPromises: Promise<void>[] = [];
@@ -390,7 +425,6 @@ export const App: React.FC = () => {
 
     try {
       // Blob URLs (blob:http://...) must be fetched first to get the actual Blob.
-      // Passing a blob URL string directly to Gemini's inline_data fails.
       const imageUrl = page.highResUrl || page.thumbnailUrl;
       let imageBlob: Blob;
       if (imageUrl.startsWith('blob:') || imageUrl.startsWith('http')) {
@@ -411,6 +445,8 @@ export const App: React.FC = () => {
         rawOcrText: page.rawOcrText || page.text,
         detectedScript: page.script,
         pageNumber: page.pageNumber,
+        documentMode: config.documentMode,
+        modelName: config.modelName || 'gemini-3.6-flash',
       });
 
       if (res.success) {
@@ -421,7 +457,11 @@ export const App: React.FC = () => {
             ...updated[pageIndex],
             text: res.refinedText,
             isAiRefined: true,
+            sourceType: 'gemini_vision',
             confidence: Math.max(95, page.confidence),
+            calibratedConfidence: 96,
+            needsReview: false,
+            reviewFlags: [],
             lineCount: res.refinedText.split('\n').length,
           };
           return { ...prev, pages: updated };
@@ -435,6 +475,51 @@ export const App: React.FC = () => {
     } finally {
       setIsRefiningSinglePage(false);
     }
+  };
+
+  /**
+   * Pauses queue cleanly between pages (PRD §7.2)
+   */
+  const handlePauseProcessing = () => {
+    isPausedRef.current = true;
+    setJob((prev) => (prev ? { ...prev, status: 'paused' } : null));
+  };
+
+  /**
+   * Resumes queue from current page index (PRD §7.2)
+   */
+  const handleResumeProcessing = () => {
+    if (!job || job.status !== 'paused') return;
+    isPausedRef.current = false;
+    setJob((prev) => (prev ? { ...prev, status: 'processing' } : null));
+    const toSpawn = Math.max(1, config.workerCount - activeWorkers);
+    for (let i = 0; i < toSpawn; i++) {
+      processNextPageRef.current?.();
+    }
+  };
+
+  /**
+   * Partial export of already-completed pages (PRD §7.2 Partial Download)
+   */
+  const handlePartialExport = async () => {
+    if (!job) return;
+    const completed = job.pages.filter((p) => p.status === 'done');
+    if (completed.length === 0) {
+      alert('No pages have finished processing yet.');
+      return;
+    }
+    const blob = await generateStrictFidelityDocx(completed, {
+      fileName: `${job.fileName}_Partial_${completed.length}p`,
+      autoFit: config.autoFitDocx,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${job.fileName.replace(/\.[^/.]+$/, '')}_Partial_${completed.length}p.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   /**
@@ -502,25 +587,29 @@ export const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto flex flex-col">
         {!job ? (
           <div className="flex-1 flex flex-col justify-between min-h-full">
-            <div className="flex-1 flex items-center justify-center p-4">
+            <div className="flex-1 flex items-center justify-center p-2 sm:p-4">
               <DropZone
                 onFileSelect={handleFileSelect}
                 onLoadDemo={handleLoadDemo}
-                onOpenGuide={() => setIsGuideOpen(true)}
                 isProcessing={false}
+                documentMode={config.documentMode}
+                onDocumentModeChange={(mode) => setConfig({ ...config, documentMode: mode })}
               />
             </div>
             <Footer variant="full" />
           </div>
         ) : (
-          <div className="p-4 space-y-4 max-w-7xl mx-auto w-full">
-            {/* Real-time Progress & Telemetry */}
-            {job.status === 'processing' && (
+          <div className="p-2 sm:p-4 space-y-2.5 sm:space-y-4 max-w-7xl mx-auto w-full">
+            {/* Real-time Progress & Telemetry (PRD §7.2) */}
+            {(job.status === 'processing' || job.status === 'paused') && (
               <ProgressDashboard
                 job={job}
                 activeWorkers={activeWorkers}
                 totalWorkers={config.workerCount}
                 onCancel={handleCancelProcessing}
+                onPause={handlePauseProcessing}
+                onResume={handleResumeProcessing}
+                onPartialExport={handlePartialExport}
               />
             )}
 
@@ -545,7 +634,6 @@ export const App: React.FC = () => {
               onRefineWithAi={handleRefineWithAi}
               isRefining={isRefiningSinglePage}
               config={config}
-              onOpenGuide={() => setIsGuideOpen(true)}
             />
 
             {/* Generous bottom clearance spacer */}
@@ -560,6 +648,7 @@ export const App: React.FC = () => {
           fileName={job.fileName}
           pages={job.pages}
           config={config}
+          job={job}
           onReset={handleResetJob}
         />
       )}

@@ -50,7 +50,7 @@ export const IconCpu: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) =>
   </svg>
 );
 
-export const IconCocktail: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) => (
+export const IconDualEngine: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) => (
   <svg
     width={size}
     height={size}
@@ -62,9 +62,14 @@ export const IconCocktail: React.FC<IconProps> = ({ className = 'w-4 h-4', size 
     strokeLinejoin="round"
     className={className}
   >
-    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+    <polyline points="2 17 12 22 22 17" />
+    <polyline points="2 12 12 17 22 12" />
   </svg>
 );
+
+export const IconCocktail = IconDualEngine;
+
 
 export const IconShieldCheck: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) => (
   <svg

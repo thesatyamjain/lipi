@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { PageData } from '../../types';
-import { IconCocktail, IconAlertTriangle, IconCheck } from '../common/Icons';
+import { IconDualEngine, IconAlertTriangle, IconCheck } from '../common/Icons';
 
 interface PageGridProps {
   pages: PageData[];
@@ -45,21 +45,21 @@ export const PageGrid: React.FC<PageGridProps> = ({
   }, [pages, filter, searchQuery]);
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-2">
-      <div className="bg-[#0b0d14] border border-[#1e2333] rounded-xl p-3 space-y-3">
+    <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2">
+      <div className="bg-[#0b0d14] border border-[#1e2333] rounded-xl p-2.5 sm:p-3 space-y-2.5 sm:space-y-3">
         {/* Bar: Controls, Filters & Search */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 px-1">
           {/* Left: Filter Buttons */}
-          <div className="flex items-center gap-1.5 font-mono text-xs">
+          <div className="flex items-center gap-1.5 font-mono text-xs overflow-x-auto no-scrollbar pb-0.5">
             <button
               onClick={() => setFilter('all')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 ${
                 filter === 'all'
                   ? 'bg-[#1e2434] text-white border border-[#2e374f]'
                   : 'text-[#8e98a8] hover:text-white'
               }`}
             >
-              All Pages ({pages.length})
+              All ({pages.length})
             </button>
 
             <button
@@ -83,7 +83,7 @@ export const PageGrid: React.FC<PageGridProps> = ({
                     : 'text-[#8e98a8] hover:text-[#c59b27]'
                 }`}
               >
-                <IconCocktail className="w-3 h-3" />
+                <IconDualEngine className="w-3 h-3" />
                 <span>AI Refined ({refinedCount})</span>
               </button>
             )}
@@ -107,7 +107,7 @@ export const PageGrid: React.FC<PageGridProps> = ({
                 disabled={isBatchRefining}
                 className="shrink-0 px-2.5 py-1 rounded-md bg-[#c59b27]/10 border border-[#c59b27]/30 text-[#f5cd5a] text-xs font-mono font-medium hover:bg-[#c59b27]/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
               >
-                <IconCocktail className="w-3 h-3" />
+                <IconDualEngine className="w-3 h-3" />
                 <span>
                   {isBatchRefining
                     ? 'Refining Batch...'
@@ -124,7 +124,7 @@ export const PageGrid: React.FC<PageGridProps> = ({
             No pages match the active filter or search query.
           </div>
         ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2 pt-1 px-1">
+          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 pt-1 px-1 touch-pan-x no-scrollbar">
             {filteredPages.map((page) => {
               const originalIndex = pages.findIndex((p) => p.pageNumber === page.pageNumber);
               const isSelected = originalIndex === currentPageIndex;
@@ -136,14 +136,14 @@ export const PageGrid: React.FC<PageGridProps> = ({
                 <div
                   key={page.pageNumber}
                   onClick={() => onSelectPage(originalIndex)}
-                  className={`relative shrink-0 w-28 rounded-lg overflow-hidden border transition-all cursor-pointer bg-[#12151f] flex flex-col ${
+                  className={`relative shrink-0 w-24 sm:w-28 rounded-lg overflow-hidden border transition-all cursor-pointer bg-[#12151f] flex flex-col active:scale-95 ${
                     isSelected
                       ? 'border-[#c59b27] ring-1 ring-[#c59b27] shadow-lg shadow-[#c59b27]/10 -translate-y-0.5'
                       : 'border-[#22283a] hover:border-[#3a4461]'
                   }`}
                 >
                   {/* Thumbnail Image Container */}
-                  <div className="h-36 bg-[#07090f] flex items-center justify-center overflow-hidden relative p-1">
+                  <div className="h-28 sm:h-36 bg-[#07090f] flex items-center justify-center overflow-hidden relative p-1">
                     {page.thumbnailUrl ? (
                       <img
                         src={page.thumbnailUrl}
@@ -158,7 +158,7 @@ export const PageGrid: React.FC<PageGridProps> = ({
                     <div className="absolute top-1.5 right-1.5 flex flex-col gap-1">
                       {page.isAiRefined && (
                         <span className="p-1 rounded bg-[#0c0e14]/90 text-[#f5cd5a] border border-[#c59b27]/40 shadow">
-                          <IconCocktail className="w-2.5 h-2.5" />
+                          <IconDualEngine className="w-2.5 h-2.5" />
                         </span>
                       )}
 

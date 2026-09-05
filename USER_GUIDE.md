@@ -11,7 +11,7 @@
 2. [Quick Start (30 Seconds)](#2-quick-start-30-seconds)
 3. [Supported File Formats](#3-supported-file-formats)
 4. [Pan-Bharatiya Language Support](#4-pan-bharatiya-language-support)
-5. [The Dual-Layer "Cocktail" Engine (AI Vision)](#5-the-dual-layer-cocktail-engine-ai-vision)
+5. [The Dual-Engine Pipeline (AI Vision)](#5-the-dual-engine-pipeline-ai-vision)
 6. [Interactive Review & Editing](#6-interactive-review--editing)
 7. [Exporting Documents](#7-exporting-documents)
 8. [Performance Tuning & Concurrency](#8-performance-tuning--concurrency)
@@ -30,7 +30,7 @@ Most optical character recognition (OCR) tools suffer from three fundamental pro
 **Lipi OCR** is engineered specifically to eliminate these three issues:
 - **100% Client-Side Sandbox**: Decodes and recognizes files directly inside your browser memory. Your documents never leave your computer.
 - **Strict 1:1 Page Fidelity**: Output Word documents preserve page counts strictly—Page 15 of your scan is guaranteed to be Page 15 in your exported Word file.
-- **Dual-Layer Cocktail Pipeline**: Combines local WebAssembly processing with context-aware multimodal vision AI (Gemini 2.5 Flash) to reconstruct degraded or complex Indian scripts.
+- **Dual-Engine Pipeline**: Combines local WebAssembly processing with context-aware multimodal vision AI (Gemini Flash) to reconstruct degraded or complex Indian scripts.
 
 ---
 
@@ -86,14 +86,14 @@ Lipi OCR supports **all 22 official languages** listed in the Eighth Schedule of
 
 ---
 
-## 5. The Dual-Layer "Cocktail" Engine (AI Vision)
+## 5. The Dual-Engine Pipeline (AI Vision)
 
-When working with faded print, old judicial stamps, xerox copies, or intricate Indic ligatures, base OCR can produce low-confidence text. Lipi's **Cocktail Engine** uses a two-tier pipeline:
+When working with faded print, old judicial stamps, xerox copies, or intricate Indic ligatures, base OCR can produce low-confidence text. Lipi's **Dual-Engine Architecture** uses a two-tier pipeline:
 
 ### How It Operates:
 1. **Layer 1 (Local WASM)**: Runs Tesseract WebAssembly locally at zero cost and ultra-low latency, identifying character bounding boxes and base text.
 2. **Confidence Benchmark**: If a page scores below your set threshold (e.g. 75%), Layer 2 steps in.
-3. **Layer 2 (Gemini 2.5 Flash Multimodal Vision)**: The browser sends the high-res canvas together with the rough draft to Gemini 2.5 Flash, which visually reconstructs missing matras, fixes fractured words, and restores tabular alignments.
+3. **Layer 2 (Gemini Flash Multimodal Vision)**: The browser sends the high-res canvas together with the rough draft to Gemini Flash, which visually reconstructs missing matras, fixes fractured words, and restores tabular alignments.
 
 ### Setting Up AI Refinement:
 1. Obtain a free API key from [Google AI Studio](https://aistudio.google.com/).

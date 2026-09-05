@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageData, DocumentJob } from '../../types';
-import { IconClose, IconCocktail, IconCheck, IconDocument } from '../common/Icons';
+import { IconClose, IconDualEngine, IconCheck, IconDocument } from '../common/Icons';
 
 interface AnalyticsModalProps {
   isOpen: boolean;
@@ -47,19 +47,19 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl bg-[#0e1017] border border-[#222838] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4">
+      <div className="w-full max-w-2xl bg-[#0e1017] border border-[#222838] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-[#1c2232] flex items-center justify-between bg-[#121520]">
-          <div className="flex items-center gap-2.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-[#1c2232] flex items-center justify-between bg-[#121520] shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             <div className="p-1.5 rounded-md bg-[#c59b27]/10 text-[#c59b27]">
               <IconDocument className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white tracking-tight">
+              <h2 className="text-xs sm:text-sm font-semibold text-white tracking-tight">
                 Document Accuracy &amp; Fidelity Benchmark
               </h2>
-              <p className="text-[11px] text-[#8e98a8] font-mono">
+              <p className="text-[10px] sm:text-[11px] text-[#8e98a8] font-mono">
                 {job.fileName} &bull; {pages.length} Pages
               </p>
             </div>
@@ -73,11 +73,11 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
           {/* Top Metrics Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-lg bg-[#131622] border border-[#222838]">
-              <div className="text-[10px] uppercase font-mono text-[#78859b]">Average Accuracy</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div className="p-3 sm:p-3.5 rounded-lg bg-[#131622] border border-[#222838]">
+              <div className="text-[9px] sm:text-[10px] uppercase font-mono text-[#78859b]">Average Accuracy</div>
               <div
                 className={`text-xl font-mono font-bold mt-1 ${
                   avgConfidence >= 85
@@ -105,10 +105,10 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
             <div className="p-3.5 rounded-lg bg-[#131622] border border-[#222838]">
               <div className="text-[10px] uppercase font-mono text-[#78859b]">AI Refined</div>
               <div className="text-xl font-mono font-bold text-[#c59b27] mt-1 flex items-center gap-1.5">
-                <IconCocktail className="w-4 h-4" />
+                <IconDualEngine className="w-4 h-4" />
                 <span>{aiRefinedPages.length}</span>
               </div>
-              <div className="text-[10px] text-[#64748b] mt-0.5">Vision cocktail model</div>
+              <div className="text-[10px] text-[#64748b] mt-0.5">Dual-Engine Vision model</div>
             </div>
 
             <div className="p-3.5 rounded-lg bg-[#131622] border border-[#222838]">
@@ -205,10 +205,10 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3.5 border-t border-[#1c2232] bg-[#121520] flex justify-end">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-[#1c2232] bg-[#121520] flex justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-[#1a1f2e] border border-[#272e42] text-xs font-semibold text-white hover:bg-[#252b3d] transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-lg bg-[#1a1f2e] border border-[#272e42] text-xs font-semibold text-white hover:bg-[#252b3d] active:scale-95 transition-all cursor-pointer text-center"
           >
             Close Benchmark
           </button>

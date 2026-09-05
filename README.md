@@ -1,4 +1,4 @@
-﻿# Lipi OCR — On-Site High-Fidelity Bharatiya Document Processing Engine
+# Lipi OCR — On-Site High-Fidelity Bharatiya Document Processing Engine
 
 > **100% Client-Side Document Intelligence**  
 > Your files never leave your browser. Scanned PDFs, multi-page TIFFs, and images are processed locally using WebAssembly and client-side hardware multi-threading.
@@ -33,7 +33,7 @@ Supports all 22 official Eighth Schedule languages of the Republic of India with
 - **Santali Script:** Ol Chiki
 - **Latin:** English and mixed multilingual records
 
-### 2. Hybrid "Cocktail" Architecture
+### 2. Dual-Engine Architecture
 Combines fast local character extraction with intelligent vision model refinement:
 
 - **Layer 1 (Base WASM OCR):** Parallel Tesseract.js workers run directly on your CPU cores via WebAssembly, extracting raw text and bounding boxes locally.

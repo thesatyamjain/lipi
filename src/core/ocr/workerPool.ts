@@ -1,8 +1,9 @@
-import { createWorker, Worker } from 'tesseract.js';
-import { WordData } from '../../types/index.ts';
+import { createWorker, Worker, PSM } from 'tesseract.js';
+import { WordData, DocumentMode } from '../../types/index.ts';
 import { detectScriptFromText } from './languageDetector.ts';
 import { resolveTesseractLang } from './bharatiyaLanguages.ts';
 import { preprocessImageForOcr } from './imagePreprocessor.ts';
+import { postProcessIndicText } from './indicPostProcessor.ts';
 
 export interface RecognizeResult {
   text: string;
@@ -43,10 +44,13 @@ export class OcrWorkerPool {
           logger: () => {},
         });
 
-        // Set optimized OCR parameters: locked 300 DPI + interword spaces preservation
+        // Set optimized OCR parameters: 300 DPI + interword spaces + PSM AUTO (layout analysis)
+        // PSM.AUTO (3) runs region segmentation before recognition — essential for tables and
+        // mixed layouts. PSM.SINGLE_BLOCK destroys column detection in tabular documents.
         await worker.setParameters({
           user_defined_dpi: '300',
           preserve_interword_spaces: '1',
+          tessedit_pageseg_mode: PSM.AUTO,
         });
 
         this.workers.push(worker);
@@ -88,7 +92,7 @@ export class OcrWorkerPool {
    */
   async recognize(
     imageSource: Blob | string | HTMLCanvasElement,
-    options: { preprocess?: boolean } = {}
+    options: { preprocess?: boolean; documentMode?: DocumentMode } = {}
   ): Promise<RecognizeResult> {
     const worker = await this.acquireWorker();
     try {
@@ -98,6 +102,7 @@ export class OcrWorkerPool {
           sourceToProcess = await preprocessImageForOcr(imageSource, {
             contrastStretch: true,
             sharpen: true,
+            documentMode: options.documentMode,
           });
         } catch (err) {
           console.warn('Image preprocessing skipped, fallback to raw source:', err);
@@ -120,7 +125,8 @@ export class OcrWorkerPool {
           : undefined,
       }));
 
-      const text = data.text || '';
+      const rawText = data.text || '';
+      const text = postProcessIndicText(rawText);
       const scriptInfo = detectScriptFromText(text);
 
       return {

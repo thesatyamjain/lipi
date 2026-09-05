@@ -4,12 +4,17 @@
  * layout reconstruction, and Indic/Devanagari script recovery.
  */
 
+import { postProcessIndicText } from './indicPostProcessor.ts';
+import type { DocumentMode } from '../../types/index.ts';
+
 export interface AiRefineOptions {
   apiKey: string;
   imageBlobOrBase64: Blob | string;
   rawOcrText: string;
   detectedScript?: string;
   pageNumber?: number;
+  documentMode?: DocumentMode;
+  modelName?: string;
 }
 
 export interface AiRefineResult {
@@ -39,7 +44,14 @@ async function blobToBase64(blob: Blob): Promise<string> {
  * Executes Layer 2 AI refinement on a single page
  */
 export async function refinePageWithAi(options: AiRefineOptions): Promise<AiRefineResult> {
-  const { apiKey, imageBlobOrBase64, rawOcrText, detectedScript, pageNumber } = options;
+  const {
+    apiKey,
+    imageBlobOrBase64,
+    rawOcrText,
+    detectedScript,
+    pageNumber,
+    documentMode = 'printed',
+  } = options;
 
   if (!apiKey || apiKey.trim().length === 0) {
     return {
@@ -71,26 +83,58 @@ export async function refinePageWithAi(options: AiRefineOptions): Promise<AiRefi
       base64Image = await blobToBase64(imageBlobOrBase64);
     }
 
-    const systemInstructions = `You are an expert OCR transcription and document restoration engine.
+    const systemInstructions = `You are an expert OCR transcription and document restoration engine specializing in Indian government documents, legal papers, financial records, manuscripts, and mixed-script layouts.
 Your task is to transcribe and accurately reconstruct the text from the provided document page image.
-You are given the page image along with an initial rough OCR draft from a base WASM engine.
+You are given the page image along with an initial rough OCR draft from a base WASM engine (which may be garbled or misaligned — use it only as a hint, trust the image).
 
-Rules:
-1. Examine the page image carefully. Correct any misrecognized characters, spelling mistakes, garbled letters, or broken words in the base OCR.
-2. Pay special attention to all 22 official Bharatiya (Indian) languages and scripts — Devanagari (Hindi, Marathi, Sanskrit, Nepali, Bodo, Dogri, Konkani, Maithili), Bengali & Assamese (Bengali, Assamese, Manipuri), Dravidian scripts (Tamil, Telugu, Kannada, Malayalam), Gujarati, Gurmukhi (Punjabi), Odia, Perso-Arabic (Urdu, Kashmiri, Sindhi), and Ol Chiki (Santali). Correctly restore complex ligatures, matras (vowel diacritics), halants/viramas, nuktas, anusvaras, conjunct consonants (samyuktaksharas), and preserve both regional Indic numerals (०-९, ০-৯, etc.) and Latin digits.
-3. Tabular & Grid Layout: If the page contains tables, schedules, balance sheets, invoices, or forms, format them as structured Markdown tables (| Col 1 | Col 2 |) to preserve column and row alignments.
-4. Numerical & Legal Fidelity: Preserve exact case numbers, section codes (e.g. "Section 138", "Act 1872"), serial numbers, dates, currency symbols (₹, $, etc.), and mathematical figures without hallucination or alteration.
-5. Bilingual Preservation: Maintain both English headers/terms and regional Indic passages exactly as written without translating or transliterating.
-6. Seals & Annotations: If official rubber stamps or seals contain readable text, clearly transcribe them as [Seal/Stamp: <text>].
-7. Preserve the natural reading order across multi-column layouts, paragraphs, and lists.
-8. Output STRICTLY the extracted text of the document page. Do NOT include conversational preambles (e.g. "Here is the text"), greetings, or markdown code fences like \`\`\`text.`;
+RULES:
+
+1. CHARACTER CORRECTION: Examine the image carefully. Correct any misrecognized characters, broken words, substituted glyphs, or OCR artifacts from the base draft.
+
+2. INDIC SCRIPTS, SHIROREKHA & CONJUNCTS:
+   a. Pay special attention to all 22 official Bharatiya languages — Devanagari (Hindi, Marathi, Sanskrit, Nepali, Bodo, Dogri, Konkani, Maithili), Bengali/Assamese (Bengali, Assamese, Manipuri), Dravidian (Tamil, Telugu, Kannada, Malayalam), Gujarati, Gurmukhi (Punjabi), Odia, Perso-Arabic (Urdu, Kashmiri, Sindhi), Ol Chiki (Santali).
+   b. SHIROREKHA (HEADLINE) CONTINUITY: Degraded scans and photocopies frequently show faint or broken shirorekhas. Do NOT allow broken headline lines to falsely split a single grammatical word into disconnected letters or syllables. Always reconstruct the complete word based on contextual grammar and spelling.
+   c. SAMYUKTAKSHARAS (CONJUNCTS): Base OCR engines often fail on conjuncts (e.g. क्ष, त्र, ज्ञ, द्ध, द्य, प्र, क्र, ष्ट, ष्ण, न्न). Reconstruct accurate ligatures and conjuncts from visual geometry and linguistic context.
+   d. 4-WAY MATRAS & DIACRITICS: Correctly restore vowel diacritics in all four anatomical zones (top: ि, ी, े, ै, anusvara ं, candrabindu ँ; bottom: ु, ू, ृ, halant ्; right: ा, ो, ौ, visarga ः). Never drop or confuse short/long vowels in legal or official terms.
+   e. NUMERALS: Preserve Indic numerals (०-९, ০-৯, ੦-੯, etc.) exactly as they appear in stamps, dates, or serials; do not arbitrarily convert between regional and Latin digits.
+
+3. TABLES & GRIDS — CRITICAL:
+   a. DETECTION: If the page contains ANY tabular structure (ruled lines, aligned columns, balance sheets, invoices, mark sheets, schedules, registers, forms with boxes), you MUST format it as a Markdown table.
+   b. SYNTAX: Use standard pipe-separated Markdown: | Cell | Cell | Cell |
+   c. HEADER ROW: Always output a separator row after the header: | --- | --- | --- | (one --- per column, matching the exact column count).
+   d. COLUMN COUNT: Every single row in a table MUST have the SAME number of pipe characters. Count columns from the header row and maintain that count throughout — including for empty cells.
+   e. EMPTY CELLS: If a cell is blank or empty in the image, output an empty cell: |  | (two spaces between pipes, not omitted).
+   f. MERGED CELLS (colspan): If a cell spans multiple columns visually, repeat its content in each merged column position or use a clear placeholder like | ← merged | for continuation columns.
+   g. MULTI-LINE CELLS: If a cell contains multiple lines of text, join them with a space within the single table cell. Do NOT split one cell into multiple rows.
+   h. DO NOT MERGE ROWS: Each physical row in the image = exactly one row in the Markdown table. Never collapse two image rows into one.
+   i. NUMERIC COLUMNS: Preserve exact formatting of numbers, currency (₹, $, Rs.), percentages, and dates as they appear — do not reformat.
+   j. BORDERLESS TABLES: Even if no visible grid lines exist, if content is clearly in aligned columns (e.g. a ledger, list with amounts), still format as a Markdown table.
+   k. AFTER TABLE: Any text appearing below a table (footnotes, signatures, page numbers) should appear after the table, outside it, as plain text.
+
+4. NUMERICAL & LEGAL FIDELITY: Preserve exact case numbers, section codes (e.g. "Section 138", "IPC 302", "Act 1872"), serial numbers, dates, currency amounts, and mathematical figures. Zero hallucination tolerance for numbers.
+
+5. BILINGUAL PRESERVATION: Maintain both English headers/terms and regional Indic passages exactly as written — do not translate, transliterate, or reorder.
+
+6. READING ORDER: Preserve natural reading order across multi-column layouts. For two-column pages, complete left column first, then right column.
+
+7. SEALS & STAMPS: Transcribe readable rubber stamp / official seal text as [Seal: <text>] or [Stamp: <text>].
+
+8. HANDWRITING, MANUSCRIPTS & FORMS (${documentMode === 'handwritten' ? 'ACTIVE - HIGHEST PRIORITY' : documentMode === 'mixed' ? 'MIXED FORM MODE' : 'IF APPLICABLE'}):
+   a. UNCONSTRAINED HANDWRITING: When handwriting is present (or in handwriting mode), human writing exhibits variable stroke slant, irregular character height, and omitted or wavy shirorekhas. Decipher cursive Devanagari/regional strokes by integrating whole-word grammar and sentence semantics.
+   b. MARGINALIA & CORRECTIONS: If there are handwritten margin notes, transcribe them in reading order as [Margin note: <text>].
+   c. STRIKETHROUGHS: If text has been crossed out or corrected by pen, transcribe as [Crossed out: <text>] followed by the handwritten replacement.
+   d. FAINT PENCIL / INK BLEED: Decipher low-contrast ballpoint, fountain pen, or pencil strokes carefully. Use [illegible] only if ink is completely destroyed.
+   e. MIXED FORMS: For printed forms with handwritten user entries, output each field clearly: e.g. "Name / नाम: <handwritten text>".
+
+9. OUTPUT FORMAT: Output ONLY the document text. No preambles ("Here is the transcription..."), no greetings, no markdown code fences (\`\`\`), no commentary.`;
 
     const userPrompt = `Page Number: ${pageNumber || 1}
 Detected Script: ${detectedScript || 'Auto-detect'}
+Document Mode: ${documentMode === 'handwritten' ? 'Handwritten / Manuscript (हस्तलिखित)' : documentMode === 'mixed' ? 'Mixed Form (Printed + Handwritten)' : 'Printed / Typeset'}
 
-Initial Rough Base OCR Draft:
+Initial Rough Base OCR Draft (use as hint only — prioritize the image):
 ---
-${rawOcrText || '[No base text detected]'}
+${rawOcrText || '[No base text detected — transcribe entirely from the image]'}
 ---`;
 
     const requestBody = {
@@ -111,17 +155,26 @@ ${rawOcrText || '[No base text detected]'}
         },
       ],
       generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 8192,
+        temperature: 0.05,
+        maxOutputTokens: 16384,
+        // Disable chain-of-thought for OCR transcription — saves ~1-2s per page
+        thinkingConfig: { thinkingBudget: 0 },
       },
     };
 
-    const candidateModels = [
+    // PRD §5.2 Model Hierarchy with automatic migration of deprecated models
+    const requestedModel = options.modelName === 'gemini-2.5-flash' ? 'gemini-3.6-flash' : options.modelName;
+
+    const baseHierarchy = [
       'gemini-3.6-flash',
-      'gemini-2.5-flash',
+      'gemini-3.6-pro',
       'gemini-2.0-flash',
       'gemini-1.5-flash',
     ];
+
+    const candidateModels = requestedModel
+      ? [requestedModel, ...baseHierarchy.filter((m) => m !== requestedModel)]
+      : baseHierarchy;
 
     let lastErrorMsg = '';
     let candidateResult: AiRefineResult | null = null;
@@ -176,7 +229,7 @@ ${rawOcrText || '[No base text detected]'}
         }
 
         candidateResult = {
-          refinedText: cleanedText,
+          refinedText: postProcessIndicText(cleanedText),
           success: true,
           modelUsed: modelName,
         };
